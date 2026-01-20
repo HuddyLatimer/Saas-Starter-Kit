@@ -3,6 +3,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 import { z } from "zod"
 
 const InviteSchema = z.object({
@@ -13,7 +14,7 @@ const InviteSchema = z.object({
 export async function inviteMember(formData: FormData) {
     const session = await auth()
     if (!session?.user?.email) {
-        return { error: "Not authenticated" }
+        redirect('/login')
     }
 
     // Get user's org (for simplicity, we grab the first one they own or are admin of)
@@ -27,7 +28,7 @@ export async function inviteMember(formData: FormData) {
     })
 
     if (!membership) {
-        return { error: "No organization found or insufficient permissions" }
+        redirect('/dashboard')
     }
 
     const rawData = {
@@ -38,7 +39,9 @@ export async function inviteMember(formData: FormData) {
     const result = InviteSchema.safeParse(rawData)
 
     if (!result.success) {
-        return { error: "Invalid form data" }
+        // In production, you might want to use cookies or searchParams to show errors
+        revalidatePath("/dashboard/team")
+        return
     }
 
     const { email, role } = result.data
@@ -70,16 +73,17 @@ export async function inviteMember(formData: FormData) {
         }
 
         revalidatePath("/dashboard/team")
-        return { success: true }
     } catch (error) {
         console.error(error)
-        return { error: "Failed to invite member" }
+        revalidatePath("/dashboard/team")
     }
 }
 
 export async function removeMember(memberId: string) {
     const session = await auth()
-    if (!session?.user?.id) return { error: "Unauthorized" }
+    if (!session?.user?.id) {
+        redirect('/login')
+    }
 
     // Verify permission (omitted for brevity, but crucial in prod)
 
@@ -87,5 +91,4 @@ export async function removeMember(memberId: string) {
         where: { id: memberId }
     })
     revalidatePath("/dashboard/team")
-    return { success: true }
 }
